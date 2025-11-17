@@ -1,57 +1,37 @@
-'use client';
+/*2fa page where users will be able to use their email
+to set up either passkey or TOTP authentication methods.
+Can use dummy 2fa if needed.
+*/
+"use client";
+//use components for UI overhaul
+import Button from "@/app/components/button";
+import { Card } from "@/app/components/card";
+import { useRouter } from "next/navigation";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-
-export default function TwoFA() {
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
+export default function AuthSetup() {
   const router = useRouter();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    const res = await fetch('/api/verify-2fa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    });
-
-    if (res.ok) {
-      router.push('/onboarding');
-    } else {
-      setError('Incorrect code, try 123456 for demo');
-    }
-  }
-
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-6 rounded-xl shadow max-w-sm w-full space-y-4"
-      >
-        <h1 className="text-xl font-semibold text-center">
-          Two-factor verification
+    <div className="min-h-screen bg-green-50 flex justify-center items-center px-4">
+      <Card className="w-full max-w-md">
+        
+        <h1 className="text-3xl font-bold text-green-700 mb-6">
+          Set Up Authentication
         </h1>
-        <p className="text-sm text-gray-600 text-center">
-          Enter your 6-digit code. For demo, the correct code is 123456.
+
+        <Button onClick={() => router.push("/2fa/passkey")} className="mb-4">
+          🔒 Set Up Passkey
+        </Button>
+
+        <Button onClick={() => router.push("/2fa/totp")} className="bg-green-700">
+          ⏱️ Set Up TOTP
+        </Button>
+
+        <p className="text-gray-600 mt-6 text-center">
+          Secure login with both passkey and verification code.
         </p>
-        <input
-          type="text"
-          maxLength={6}
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className="border w-full px-3 py-2 rounded"
-          placeholder="123456"
-        />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        <button
-          type="submit"
-          className="w-full py-2 rounded bg-indigo-600 text-white font-medium"
-        >
-          Verify
-        </button>
-      </form>
-    </main>
+      </Card>
+    </div>
   );
 }
+

@@ -1,81 +1,79 @@
-'use client';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+/*Planner page where the app will spit out a 7-day meal plan based on user inputs.
+*/
+"use client";
+//use components for UI overhaul
+import Button from "@/app/components/button";
+import { Card } from "@/app/components/card";
+import { useState } from "react";
 
-type Meal ={
-  name: string;
-  description: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-};
-
-type DayPlan ={
-  day: number;
-  meals: Meal[];
-};
-
-export default function PlannerPage(){
-  const router = useRouter();
-  const [plan, setPlan] = useState<{ days: DayPlan[] } | null>(null);
+export default function PlannerPage() {
   const [loading, setLoading] = useState(false);
+  const [plan, setPlan] = useState<any>(null);
 
-  async function generatePlan(){
-    //log to see if function is called
+  async function generatePlan() {
     setLoading(true);
-    console.log("🧠 Calling /api/ai/plan...");
-    const res = await fetch('/api/ai/plan', { method: 'POST' });
-
-    if(!res.ok){
-      const error = await res.text();
-      //log error
-      console.error('❌ Plan generation failed:', error);
-      setLoading(false);
-      return;
-    }
-
-    const data = await res.json();
-    console.log("📦 Got plan:", data);
-    setPlan(data);
+    const res = await fetch("/api/ai/plan", { method: "POST" });
+    const json = await res.json();
+    setPlan(json);
     setLoading(false);
   }
-  //logging plan state
-  useEffect(() =>{
-    console.log("📦 Current plan state:", plan);
-  }, [plan]);
-  //formatting
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Your AI Meal Plan</h1>
+    <div className="min-h-screen bg-green-50 px-4 py-6">
+      <h1 className="text-4xl font-bold text-green-700 mb-6">Meal Planner</h1>
 
-      {!plan && (
-        <button
-          onClick={generatePlan}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          {loading ? 'Generating...' : 'Generate Plan'}
-        </button>
-      )}
+      <Button onClick={generatePlan}>
+        {loading ? "Generating..." : "Generate 7-Day Meal Plan"}
+      </Button>
 
-      {plan && (
-        <div className="mt-6 space-y-4">
-          {plan.days.map((day) => (
-            <div key={day.day} className="border p-4 rounded bg-white shadow">
-              <h2 className="text-xl font-semibold">Day {day.day}</h2>
-              {day.meals.map((meal, idx) => (
-                <div key={idx} className="mt-2">
-                  <h3 className="font-medium">{meal.name}</h3>
-                  <p className="text-sm text-gray-700">{meal.description}</p>
-                  <p className="text-xs text-gray-500">
-                    {meal.calories} kcal | P: {meal.protein}g | C: {meal.carbs}g | F: {meal.fat}g
-                  </p>
-                </div>
+      <div className="mt-8 space-y-6">
+        {plan?.days?.map((day: any) => (
+          <Card key={day.day}>
+            <h2 className="text-2xl font-bold text-green-700 mb-4">Day {day.day}</h2>
+
+            <div className="space-y-4">
+              {day.meals.map((m: any, i: number) => (
+                <Card key={i} className="border border-green-200 p-4">
+
+                  <h3 className="text-xl font-semibold mb-1">{m.name}</h3>
+                  <p className="text-gray-600 mb-3">{m.description}</p>
+
+                  {/* NUTRITION */}
+                  <div className="flex gap-4 text-sm text-gray-700 mb-3">
+                    <span>🔥 {m.calories} cal</span>
+                    <span>🥩 {m.protein}g protein</span>
+                    <span>🍞 {m.carbs}g carbs</span>
+                    <span>🧈 {m.fat}g fat</span>
+                  </div>
+
+                  {/* TIME + COST */}
+                  <div className="flex justify-between text-sm text-green-700 font-medium mb-3">
+                    <span>⏱ Prep Time: {m.time || "20 mins"}</span>
+                    <span>💲 Estimated Cost: ${m.cost || "3.50"}</span>
+                  </div>
+
+                  {/* RECIPE INSTRUCTIONS */}
+                  <h4 className="text-green-700 font-semibold mb-1">Recipe:</h4>
+                  <ul className="list-disc ml-6 text-gray-700 text-sm space-y-1">
+                    {m.instructions?.map((step: string, idx: number) => (
+                      <li key={idx}>{step}</li>
+                    ))}
+                  </ul>
+
+                  {/* COST SAVING + ACCESSIBILITY */}
+                  <div className="mt-4">
+                    <h4 className="text-green-700 font-semibold mb-1">Budget Tip:</h4>
+                    <p className="text-gray-700 text-sm">
+                      {m.costSaving || "Use frozen veggies or store-brand products to reduce cost."}
+                    </p>
+                  </div>
+
+                </Card>
               ))}
             </div>
-          ))}
-        </div>
-      )}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
