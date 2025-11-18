@@ -85,7 +85,7 @@ export default function SetupTOTP() {
       }
       
       localStorage.removeItem('tempUserId');
-      router.push('/dashboard');
+      router.push('/onboarding');
       
     } catch (err: any) {
       setError(err.message || 'Something went wrong');

@@ -70,14 +70,14 @@ export default function LoginPage() {
 
       // Login successful - check if 2FA is required
       if (data.requires2FA) {
-        sessionStorage.setItem('tempUserId', data.userId);
+        localStorage.setItem('tempUserId', data.userId);
         router.push('/2fa_verify');
       } else {
         // No 2FA, login complete
         if (data.token) {
           localStorage.setItem('authToken', data.token);
         }
-        router.push('/dashboard');
+        router.push('/onboarding');
       }
 
       setAttemptCount(0);

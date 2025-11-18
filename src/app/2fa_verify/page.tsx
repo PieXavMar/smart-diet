@@ -14,7 +14,7 @@ export default function Verify2FA() {
   useEffect(() => {
     const initializeAuth = async () => {
       // Check if user has userId from login
-      const storedUserId = sessionStorage.getItem('tempUserId');
+      const storedUserId = localStorage.getItem('tempUserId');
       
       if (!storedUserId) {
         router.push('/login');
@@ -39,8 +39,8 @@ export default function Verify2FA() {
       
       // Mock success
       localStorage.setItem('authToken', 'mock-token-' + Date.now());
-      sessionStorage.removeItem('tempUserId');
-      router.push('/dashboard');
+      localStorage.removeItem('tempUserId');
+      router.push('/onboarding');
       
     } catch (err: any) {
       setError(err.message || 'Passkey verification failed');

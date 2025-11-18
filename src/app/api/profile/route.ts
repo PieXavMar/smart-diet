@@ -1,27 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/mongodb';
+import { NextResponse } from "next/server";
+import { connectDB } from "@/lib/mongodb";
+import User from "@/models/User";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
+  await connectDB();
   const body = await req.json();
 
-  const db = await getDb();
-  const userId = 'demo-user';
-  //modified to store user profile data
-  await db.collection("profiles").updateOne(
-  { userId: "demo-user" },
-  {
-    $set: {
+  // TEMP: demo-user for SmartDiet
+  const userId = "demo-user";
+
+  await User.updateOne(
+    { userId },        // <<< FIXED (no _id)
+    {
+      userId,
       heightCm: body.height,
       weightKg: body.weight,
       age: body.age,
-      activityLevel: body.activity,
       goal: body.goal,
+      activityLevel: body.activity,
       dietType: body.diet,
-      allergies: body.allergies ?? [],
+      allergies: body.allergies
     },
-  },
-  { upsert: true }
-);
+    { upsert: true }
+  );
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

@@ -1,23 +1,40 @@
+export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
+import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 
-// TODO: Import when ready
-// import { connectDB } from '@/lib/mongodb';
-// import User from '@/models/User';
-// import bcrypt from 'bcryptjs';
-// import jwt from 'jsonwebtoken';
-// import speakeasy from 'speakeasy';
-// import QRCode from 'qrcode';
-// import crypto from 'crypto';
-// import nodemailer from 'nodemailer';
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error("Please define the MONGODB_URI environment variable");
+}
+
+// MongoDB connection is handled by /src/lib/mongodb via the imported connectDB()
+// The duplicated connection logic was removed to avoid syntax and type errors.
+
+// helper to sign JWT
+function signToken(payload: object) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET not set');
+  }
+  return jwt.sign(payload, secret, { expiresIn: '7d' });
+}
 
 // =============================================================================
 // REGISTER - POST /api/auth?action=register
 // =============================================================================
 async function handleRegister(request: NextRequest) {
+  console.log("SERVER MONGODB_URI:", process.env.MONGODB_URI);
   try {
     const { email, password, username } = await request.json();
 
-    // Validation
     if (!email || !password || !username) {
       return NextResponse.json(
         { message: 'All fields are required' },
@@ -32,35 +49,35 @@ async function handleRegister(request: NextRequest) {
       );
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    // if (existingUser) {
-    //   return NextResponse.json(
-    //     { message: 'Email or username already in use' },
-    //     { status: 409 }
-    //   );
-    // }
-    // const hashedPassword = await bcrypt.hash(password, 12);
-    // const newUser = await User.create({
-    //   email,
-    //   username,
-    //   password: hashedPassword,
-    //   requires2FA: true,
-    //   twoFactorSecret: null,
-    //   createdAt: new Date()
-    // });
-    // return NextResponse.json(
-    //   { message: 'Registration successful', userId: newUser._id },
-    //   { status: 201 }
-    // );
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Register:', { email, username });
+    const existingUser = await User.findOne({
+      $or: [{ email }, { username }]
+    });
+
+    if (existingUser) {
+      return NextResponse.json(
+        { message: 'Email or username already in use' },
+        { status: 409 }
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const newUser = await User.create({
+      email,
+      username,
+      password: hashedPassword,
+      // user must set up 2FA after registration
+      requires2FASetup: true,
+      twoFactorSecret: null,
+      tempTwoFactorSecret: null
+    });
+
     return NextResponse.json(
-      { 
-        message: 'Registration successful (Mock)',
-        userId: 'mock-user-id-' + Date.now()
+      {
+        message: "Registration successful",
+        userId: newUser._id.toString()   // ← IMPORTANT
       },
       { status: 201 }
     );
@@ -71,7 +88,7 @@ async function handleRegister(request: NextRequest) {
 }
 
 // =============================================================================
-// LOGIN - POST /api/auth?action=login
+ // LOGIN - POST /api/auth?action=login
 // =============================================================================
 async function handleLogin(request: NextRequest) {
   try {
@@ -84,66 +101,81 @@ async function handleLogin(request: NextRequest) {
       );
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const user = await User.findOne({ email });
-    // if (!user) {
-    //   return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
-    // }
-    // if (user.isLocked && user.lockUntil > Date.now()) {
-    //   const remainingMinutes = Math.ceil((user.lockUntil - Date.now()) / 60000);
-    //   return NextResponse.json(
-    //     { message: `Account locked. Try again in ${remainingMinutes} minutes` },
-    //     { status: 423 }
-    //   );
-    // }
-    // const isPasswordValid = await bcrypt.compare(password, user.password);
-    // if (!isPasswordValid) {
-    //   user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-    //   if (user.failedLoginAttempts >= 5) {
-    //     user.isLocked = true;
-    //     user.lockUntil = Date.now() + (5 * 60 * 1000);
-    //     await user.save();
-    //     return NextResponse.json(
-    //       { message: 'Too many failed attempts. Account locked for 5 minutes' },
-    //       { status: 423 }
-    //     );
-    //   }
-    //   await user.save();
-    //   return NextResponse.json(
-    //     { message: `Invalid credentials (${user.failedLoginAttempts}/5)` },
-    //     { status: 401 }
-    //   );
-    // }
-    // user.failedLoginAttempts = 0;
-    // user.isLocked = false;
-    // user.lockUntil = null;
-    // await user.save();
-    // if (user.twoFactorSecret) {
-    //   return NextResponse.json({
-    //     success: true,
-    //     requires2FA: true,
-    //     userId: user._id.toString()
-    //   });
-    // }
-    // const token = jwt.sign(
-    //   { userId: user._id, email: user.email },
-    //   process.env.JWT_SECRET!,
-    //   { expiresIn: '7d' }
-    // );
-    // return NextResponse.json({
-    //   success: true,
-    //   requires2FA: false,
-    //   token,
-    //   user: { id: user._id, email: user.email, username: user.username }
-    // });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Login:', { email });
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
+    }
+
+    // check lock
+    if (user.isLocked && user.lockUntil && user.lockUntil.getTime() > Date.now()) {
+      const remainingMinutes = Math.ceil(
+        (user.lockUntil.getTime() - Date.now()) / 60000
+      );
+      return NextResponse.json(
+        { message: `Account locked. Try again in ${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}` },
+        { status: 423 }
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+
+      if (user.failedLoginAttempts >= 5) {
+        user.isLocked = true;
+        user.lockUntil = new Date(Date.now() + 5 * 60 * 1000);
+        await user.save();
+
+        return NextResponse.json(
+          { message: 'Too many failed attempts. Account locked for 5 minutes' },
+          { status: 423 }
+        );
+      }
+
+      await user.save();
+
+      return NextResponse.json(
+        {
+          message: `Invalid credentials (${user.failedLoginAttempts}/5)`
+        },
+        { status: 401 }
+      );
+    }
+
+    // reset failure state
+    user.failedLoginAttempts = 0;
+    user.isLocked = false;
+    user.lockUntil = null;
+    await user.save();
+
+    // if user has a TOTP secret, require 2FA
+    if (user.twoFactorSecret) {
+      return NextResponse.json({
+        success: true,
+        requires2FA: true,
+        userId: user._id.toString()
+      });
+    }
+
+    // no 2FA enabled: issue token directly
+    const token = signToken({
+      userId: user._id.toString(),
+      email: user.email
+    });
+
     return NextResponse.json({
       success: true,
-      requires2FA: true,
-      userId: 'mock-user-id-' + Date.now()
+      requires2FA: false,
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username
+      }
     });
   } catch (error: any) {
     console.error('Login error:', error);
@@ -162,23 +194,19 @@ async function handleCheck2FASetup(request: NextRequest) {
       return NextResponse.json({ message: 'User ID is required' }, { status: 400 });
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const user = await User.findById(userId);
-    // if (!user) {
-    //   return NextResponse.json({ message: 'User not found' }, { status: 404 });
-    // }
-    // const needsSetup = !user.twoFactorSecret || user.requires2FA;
-    // return NextResponse.json({
-    //   needsSetup: needsSetup,
-    //   has2FA: !!user.twoFactorSecret
-    // });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Check 2FA setup for:', userId);
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return NextResponse.json({ message: 'User not found' }, { status: 404 });
+    }
+
+    const needsSetup = !user.twoFactorSecret || user.requires2FASetup;
+
     return NextResponse.json({
-      needsSetup: true,
-      has2FA: false
+      needsSetup,
+      has2FA: !!user.twoFactorSecret
     });
   } catch (error: any) {
     console.error('Check 2FA setup error:', error);
@@ -197,30 +225,28 @@ async function handleGenerate2FA(request: NextRequest) {
       return NextResponse.json({ message: 'User ID is required' }, { status: 400 });
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const user = await User.findById(userId);
-    // if (!user) {
-    //   return NextResponse.json({ message: 'User not found' }, { status: 404 });
-    // }
-    // const secret = speakeasy.generateSecret({
-    //   name: `SmartDiet (${user.email})`,
-    //   length: 32
-    // });
-    // const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url!);
-    // user.tempTwoFactorSecret = secret.base32;
-    // await user.save();
-    // return NextResponse.json({
-    //   qrCode: qrCodeUrl,
-    //   secret: secret.base32
-    // });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Generate 2FA for:', userId);
-    const mockQRCode = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return NextResponse.json({ message: 'User not found' }, { status: 404 });
+    }
+
+    const secret = speakeasy.generateSecret({
+      name: `SmartDiet (${user.email})`,
+      length: 32
+    });
+
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url || '');
+
+    user.tempTwoFactorSecret = secret.base32;
+    user.requires2FASetup = true;
+    await user.save();
+
     return NextResponse.json({
-      qrCode: mockQRCode,
-      secret: 'JBSWY3DPEHPK3PXP'
+      qrCode: qrCodeUrl,
+      secret: secret.base32
     });
   } catch (error: any) {
     console.error('Generate 2FA error:', error);
@@ -242,63 +268,66 @@ async function handleVerify2FA(request: NextRequest) {
       );
     }
 
-    if (code.length !== 6) {
-      return NextResponse.json({ message: 'Code must be 6 digits' }, { status: 400 });
+    if (typeof code !== 'string' || code.length !== 6) {
+      return NextResponse.json(
+        { message: 'Code must be a 6 digit string' },
+        { status: 400 }
+      );
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const user = await User.findById(userId);
-    // if (!user) {
-    //   return NextResponse.json({ message: 'User not found' }, { status: 404 });
-    // }
-    // let secret = isSetup ? user.tempTwoFactorSecret : user.twoFactorSecret;
-    // if (!secret) {
-    //   return NextResponse.json(
-    //     { message: isSetup ? '2FA setup not found' : '2FA not enabled' },
-    //     { status: 400 }
-    //   );
-    // }
-    // const verified = speakeasy.totp.verify({
-    //   secret: secret,
-    //   encoding: 'base32',
-    //   token: code,
-    //   window: 2
-    // });
-    // if (!verified) {
-    //   return NextResponse.json({ message: 'Invalid or expired code' }, { status: 401 });
-    // }
-    // if (isSetup) {
-    //   user.twoFactorSecret = user.tempTwoFactorSecret;
-    //   user.tempTwoFactorSecret = null;
-    //   user.requires2FA = false;
-    //   await user.save();
-    // }
-    // const token = jwt.sign(
-    //   { userId: user._id, email: user.email },
-    //   process.env.JWT_SECRET!,
-    //   { expiresIn: '7d' }
-    // );
-    // return NextResponse.json({
-    //   success: true,
-    //   message: isSetup ? '2FA setup complete' : 'Verification successful',
-    //   token,
-    //   user: { id: user._id, email: user.email, username: user.username }
-    // });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Verify 2FA:', { userId, code, isSetup });
-    if (code === '123456' || code.length === 6) {
-      return NextResponse.json({
-        success: true,
-        message: isSetup ? '2FA setup complete' : 'Verification successful',
-        token: 'mock-jwt-token-' + Date.now()
-      });
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return NextResponse.json({ message: 'User not found' }, { status: 404 });
     }
-    return NextResponse.json(
-      { message: 'Invalid code (Hint: use 123456 for testing)' },
-      { status: 401 }
-    );
+
+    const secret = isSetup ? user.tempTwoFactorSecret : user.twoFactorSecret;
+
+    if (!secret) {
+      return NextResponse.json(
+        { message: isSetup ? '2FA setup not started' : '2FA not enabled' },
+        { status: 400 }
+      );
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: secret,
+      encoding: 'base32',
+      token: code,
+      window: 2
+    });
+
+    if (!verified) {
+      return NextResponse.json(
+        { message: 'Invalid or expired code' },
+        { status: 401 }
+      );
+    }
+
+    if (isSetup) {
+      user.twoFactorSecret = user.tempTwoFactorSecret;
+      user.tempTwoFactorSecret = null;
+      user.requires2FASetup = false;
+      await user.save();
+    }
+
+    const token = signToken({
+      userId: user._id.toString(),
+      email: user.email
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: isSetup ? '2FA setup complete' : 'Verification successful',
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username
+      }
+    });
   } catch (error: any) {
     console.error('Verify 2FA error:', error);
     return NextResponse.json({ message: 'Server error' }, { status: 500 });
@@ -307,6 +336,7 @@ async function handleVerify2FA(request: NextRequest) {
 
 // =============================================================================
 // FORGOT PASSWORD - POST /api/auth?action=password_forgot
+// (You can leave this mocked if you want for now)
 // =============================================================================
 async function handleForgotPassword(request: NextRequest) {
   try {
@@ -316,40 +346,46 @@ async function handleForgotPassword(request: NextRequest) {
       return NextResponse.json({ message: 'Email is required' }, { status: 400 });
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const user = await User.findOne({ email });
-    // if (!user) {
-    //   return NextResponse.json({
-    //     success: true,
-    //     message: 'If an account exists, a reset link has been sent'
-    //   });
-    // }
-    // const resetToken = crypto.randomBytes(32).toString('hex');
-    // const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-    // user.resetPasswordToken = resetTokenHash;
-    // user.resetPasswordExpires = Date.now() + 3600000;
-    // await user.save();
-    // const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset_password?token=${resetToken}`;
-    // const transporter = nodemailer.createTransport({
-    //   host: process.env.EMAIL_HOST,
-    //   port: process.env.EMAIL_PORT,
-    //   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASSWORD }
-    // });
-    // await transporter.sendMail({
-    //   from: process.env.EMAIL_FROM,
-    //   to: user.email,
-    //   subject: 'SmartDiet - Password Reset',
-    //   html: `<h2>Password Reset</h2><p>Click: <a href="${resetUrl}">${resetUrl}</a></p>`
-    // });
-    // return NextResponse.json({
-    //   success: true,
-    //   message: 'If an account exists, a reset link has been sent'
-    // });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Forgot password for:', email);
-    console.log('Mock reset link: http://localhost:3000/reset_password?token=mock-token-123');
+    const user = await User.findOne({ email });
+
+    // For privacy, always return generic message
+    if (!user) {
+      return NextResponse.json({
+        success: true,
+        message: 'If an account exists, a reset link has been sent'
+      });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    user.resetPasswordToken = resetTokenHash;
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+    await user.save();
+
+    const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset_password?token=${resetToken}`;
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 587,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM,
+      to: user.email,
+      subject: 'SmartDiet - Password Reset',
+      html: `<h2>Password Reset</h2><p>Click the link to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
+    });
+
     return NextResponse.json({
       success: true,
       message: 'If an account exists, a reset link has been sent'
@@ -371,23 +407,25 @@ async function handleValidateResetToken(request: NextRequest) {
       return NextResponse.json({ message: 'Reset token is required' }, { status: 400 });
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    // const user = await User.findOne({
-    //   resetPasswordToken: resetTokenHash,
-    //   resetPasswordExpires: { $gt: Date.now() }
-    // });
-    // if (!user) {
-    //   return NextResponse.json(
-    //     { message: 'Invalid or expired reset link' },
-    //     { status: 400 }
-    //   );
-    // }
-    // return NextResponse.json({ success: true, message: 'Token is valid' });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Validating token:', token);
+    const resetTokenHash = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: resetTokenHash,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { message: 'Invalid or expired reset link' },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({ success: true, message: 'Token is valid' });
   } catch (error: any) {
     console.error('Validate reset token error:', error);
@@ -416,32 +454,39 @@ async function handleResetPassword(request: NextRequest) {
       );
     }
 
-    // TODO: Implement database logic
-    // await connectDB();
-    // const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    // const user = await User.findOne({
-    //   resetPasswordToken: resetTokenHash,
-    //   resetPasswordExpires: { $gt: Date.now() }
-    // });
-    // if (!user) {
-    //   return NextResponse.json(
-    //     { message: 'Invalid or expired reset link' },
-    //     { status: 400 }
-    //   );
-    // }
-    // const hashedPassword = await bcrypt.hash(newPassword, 12);
-    // user.password = hashedPassword;
-    // user.resetPasswordToken = undefined;
-    // user.resetPasswordExpires = undefined;
-    // user.failedLoginAttempts = 0;
-    // user.isLocked = false;
-    // user.lockUntil = null;
-    // await user.save();
-    // return NextResponse.json({ success: true, message: 'Password reset successful' });
+    await connectDB();
 
-    // TEMP: Mock response
-    console.log('Reset password for token:', token);
-    return NextResponse.json({ success: true, message: 'Password reset successful' });
+    const resetTokenHash = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: resetTokenHash,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { message: 'Invalid or expired reset link' },
+        { status: 400 }
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    user.password = hashedPassword;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    user.failedLoginAttempts = 0;
+    user.isLocked = false;
+    user.lockUntil = null;
+    await user.save();
+
+    return NextResponse.json({
+      success: true,
+      message: 'Password reset successful'
+    });
   } catch (error: any) {
     console.error('Reset password error:', error);
     return NextResponse.json({ message: 'Server error' }, { status: 500 });
@@ -474,7 +519,10 @@ export async function POST(request: NextRequest) {
       return handleResetPassword(request);
     default:
       return NextResponse.json(
-        { message: 'Invalid action. Use: register, login, 2fa_setup_check, 2fa_generate, 2fa_verify, password_forgot, reset_validate_token, reset_password' },
+        {
+          message:
+            'Invalid action. Use: register, login, 2fa_setup_check, 2fa_generate, 2fa_verify, password_forgot, reset_validate_token, reset_password'
+        },
         { status: 400 }
       );
   }

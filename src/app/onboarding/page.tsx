@@ -3,10 +3,13 @@ such as height, weight, gender, activity level, dietary preferences, and allergi
 */
 "use client";
 //use components for UI overhaul
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/app/components/button";
 import { Card } from "@/app/components/card";
 import { useRouter } from "next/navigation";
+import router from "next/router";
+
+
 
 export default function Onboarding() {
   const router = useRouter();
@@ -44,7 +47,7 @@ export default function Onboarding() {
       }),
     });
 
-    router.push("/2fa");
+    router.push("/planner");
   };
 
   return (

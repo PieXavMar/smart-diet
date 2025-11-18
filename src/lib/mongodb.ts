@@ -1,31 +1,43 @@
-import { MongoClient, Db } from 'mongodb';
+// lib/mongodb.ts
+import mongoose from "mongoose";
 
-declare global{
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error("Please define the MONGODB_URI environment variable");
 }
 
-const uri = process.env.MONGODB_URI ?? '';
-if(!uri){
-  throw new Error('Please define the MONGODB_URI environment variable in your environment');
+declare global {
+  var mongoose: {
+    conn: mongoose.Mongoose | null;
+    promise: Promise<mongoose.Mongoose> | null;
+  } | undefined;
 }
 
-const options ={};
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+let cached: { conn: mongoose.Mongoose | null; promise: Promise<mongoose.Mongoose> | null } =
+  global.mongoose ?? { conn: null, promise: null };
+global.mongoose = cached;
 
-if(process.env.NODE_ENV === 'development'){
-  if(!global._mongoClientPromise){
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
+export async function connectDB() {
+  if (cached.conn) return cached.conn;
+
+  if (!cached.promise) {
+    cached.promise = mongoose
+      .connect(MONGODB_URI as string, {
+        dbName: "smartdiet",
+        bufferCommands: false,
+      })
+      .then((mongoose) => {
+        console.log("✔ Connected to MongoDB");
+        return mongoose;
+      })
+      .catch((err) => {
+        console.error("❌ MongoDB connection error:", err);
+        throw err;
+      });
   }
-  clientPromise = global._mongoClientPromise as Promise<MongoClient>;
-} 
-else{
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+
+  cached.conn = await cached.promise;
+  return cached.conn;
 }
-export async function getDb(dbName?: string): Promise<Db>{
-  const client = await clientPromise;
-  return client.db(dbName);
-}
-export default clientPromise;
+

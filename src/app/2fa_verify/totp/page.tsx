@@ -12,7 +12,7 @@ export default function VerifyTOTP() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const storedUserId = sessionStorage.getItem('tempUserId');
+    const storedUserId = localStorage.getItem('tempUserId');
     
     if (!storedUserId) {
       router.push('/login');
@@ -54,8 +54,8 @@ export default function VerifyTOTP() {
         localStorage.setItem('authToken', data.token);
       }
       
-      sessionStorage.removeItem('tempUserId');
-      router.push('/dashboard');
+      localStorage.removeItem('tempUserId');
+      router.push('/onboarding');
       
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
