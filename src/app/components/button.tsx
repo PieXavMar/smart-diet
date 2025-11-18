@@ -6,6 +6,7 @@ type ButtonProps = {
   children?: ReactNode;
   onClick?: MouseEventHandler<HTMLButtonElement>;
   className?: string;
+  disabled?: boolean; 
 };
 
 export default function Button({ children, onClick, className = "" }: ButtonProps) {
