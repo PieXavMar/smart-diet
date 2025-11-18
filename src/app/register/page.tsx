@@ -66,7 +66,6 @@ export default function RegisterPage() {
         throw new Error(data.message || 'Registration failed');
       }
 
-      // ✅ 保存 userId 并跳转到 2FA 设置页面
       localStorage.setItem('tempUserId', data.userId);
       router.push('/2fa');
       

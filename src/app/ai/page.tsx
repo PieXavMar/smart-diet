@@ -37,7 +37,7 @@ export default function AIPage() {
                 className="w-full h-40 p-3 border rounded mb-4 text-black"
             />
 
-            {/* Moral note under the reply */}
+            {/* Moral note */}
             <p className="text-sm text-gray-600 mt-3">
                 Note: AI is not perfect, verify important info yourself!!!
             </p>
